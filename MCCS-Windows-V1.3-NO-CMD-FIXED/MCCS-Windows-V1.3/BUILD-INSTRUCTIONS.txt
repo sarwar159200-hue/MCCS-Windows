@@ -1,0 +1,9 @@
+MCCS WINDOWS V1.3 - NO CMD FIX
+
+This release uses the Windows GUI subsystem for release builds.
+The terminal/CMD window will no longer open with MCCS.
+MCCS remains a normal independent Windows app window.
+Miran Energy icon remains included.
+The app continues to load the live MCCS production website, so normal website deployments appear automatically.
+
+IMPORTANT: uninstall the previous MCCS Windows version before installing V1.3 so old shortcuts do not launch the old executable.
