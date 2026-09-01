@@ -41,16 +41,14 @@ jobs:
             Select-Object -First 1
 
           if (-not $package) {
-            Write-Host "Repository folders found:"
-            Get-ChildItem -Path $env:GITHUB_WORKSPACE -Depth 4 | Select-Object FullName
-            throw "Could not find the MCCS Windows application. Expected a package.json next to a src-tauri folder."
+            throw "Could not find the MCCS Windows application."
           }
 
           $appPath = $package.Directory.FullName
           Write-Host "MCCS application found at: $appPath"
           "app_path=$appPath" >> $env:GITHUB_OUTPUT
 
-      - name: Verify MCCS files and Miran Energy icon
+      - name: Verify MCCS files and no-console fix
         shell: pwsh
         run: |
           $app = "${{ steps.findapp.outputs.app_path }}"
@@ -58,16 +56,17 @@ jobs:
             (Join-Path $app "package.json"),
             (Join-Path $app "src-tauri\Cargo.toml"),
             (Join-Path $app "src-tauri\tauri.conf.json"),
+            (Join-Path $app "src-tauri\src\main.rs"),
             (Join-Path $app "src-tauri\icons\icon.ico")
           )
-
           foreach ($file in $required) {
-            if (-not (Test-Path $file)) {
-              throw "Required file missing: $file"
-            }
+            if (-not (Test-Path $file)) { throw "Required file missing: $file" }
           }
-
-          Write-Host "MCCS project structure and Miran Energy icon verified."
+          $main = Get-Content (Join-Path $app "src-tauri\src\main.rs") -Raw
+          if ($main -notmatch 'windows_subsystem\s*=\s*"windows"') {
+            throw "Windows GUI subsystem fix is missing from main.rs"
+          }
+          Write-Host "MCCS project, Miran icon and no-console fix verified."
 
       - name: Install Node dependencies
         shell: pwsh
@@ -87,28 +86,18 @@ jobs:
         run: |
           $app = "${{ steps.findapp.outputs.app_path }}"
           $bundle = Join-Path $app "src-tauri\target\${{ matrix.target }}\release\bundle\nsis"
-
-          if (-not (Test-Path $bundle)) {
-            throw "NSIS bundle folder was not created: $bundle"
-          }
-
-          $setup = Get-ChildItem -Path $bundle -Recurse -File -Filter "*-setup.exe" |
-            Select-Object -First 1
-
-          if (-not $setup) {
-            throw "Windows Setup EXE was not found in $bundle"
-          }
-
-          $output = Join-Path $env:RUNNER_TEMP "MCCS-Windows-V1-${{ matrix.name }}-Setup.exe"
+          if (-not (Test-Path $bundle)) { throw "NSIS bundle folder was not created: $bundle" }
+          $setup = Get-ChildItem -Path $bundle -Recurse -File -Filter "*-setup.exe" | Select-Object -First 1
+          if (-not $setup) { throw "Windows Setup EXE was not found in $bundle" }
+          $output = Join-Path $env:RUNNER_TEMP "MCCS-Windows-V1.3-${{ matrix.name }}-Setup.exe"
           Copy-Item $setup.FullName $output -Force
-
           Write-Host "Installer ready: $output"
           "installer_path=$output" >> $env:GITHUB_OUTPUT
 
       - name: Upload MCCS installer
         uses: actions/upload-artifact@v4
         with:
-          name: MCCS-Windows-V1-${{ matrix.name }}
+          name: MCCS-Windows-V1.3-${{ matrix.name }}
           path: ${{ steps.installer.outputs.installer_path }}
           if-no-files-found: error
           retention-days: 30
