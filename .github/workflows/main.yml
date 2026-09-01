@@ -2,9 +2,6 @@ name: Build MCCS Windows V1
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
 
 jobs:
   build-windows:
@@ -33,42 +30,85 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Go to MCCS Windows folder
+      - name: Find MCCS Windows application
+        id: findapp
         shell: pwsh
         run: |
-          cd MCCS-Windows-V1-Build-Package/MCCS-Windows-V1
+          $package = Get-ChildItem -Path $env:GITHUB_WORKSPACE -Recurse -File -Filter package.json |
+            Where-Object {
+              Test-Path (Join-Path $_.Directory.FullName "src-tauri\Cargo.toml")
+            } |
+            Select-Object -First 1
+
+          if (-not $package) {
+            Write-Host "Repository folders found:"
+            Get-ChildItem -Path $env:GITHUB_WORKSPACE -Depth 4 | Select-Object FullName
+            throw "Could not find the MCCS Windows application. Expected a package.json next to a src-tauri folder."
+          }
+
+          $appPath = $package.Directory.FullName
+          Write-Host "MCCS application found at: $appPath"
+          "app_path=$appPath" >> $env:GITHUB_OUTPUT
+
+      - name: Verify MCCS files and Miran Energy icon
+        shell: pwsh
+        run: |
+          $app = "${{ steps.findapp.outputs.app_path }}"
+          $required = @(
+            (Join-Path $app "package.json"),
+            (Join-Path $app "src-tauri\Cargo.toml"),
+            (Join-Path $app "src-tauri\tauri.conf.json"),
+            (Join-Path $app "src-tauri\icons\icon.ico")
+          )
+
+          foreach ($file in $required) {
+            if (-not (Test-Path $file)) {
+              throw "Required file missing: $file"
+            }
+          }
+
+          Write-Host "MCCS project structure and Miran Energy icon verified."
+
+      - name: Install Node dependencies
+        shell: pwsh
+        run: |
+          Set-Location "${{ steps.findapp.outputs.app_path }}"
           npm install
 
       - name: Build MCCS Windows installer
         shell: pwsh
         run: |
-          cd MCCS-Windows-V1-Build-Package/MCCS-Windows-V1
+          Set-Location "${{ steps.findapp.outputs.app_path }}"
           npm run tauri build -- --target ${{ matrix.target }}
 
-      - name: Prepare installer
+      - name: Find and rename installer
+        id: installer
         shell: pwsh
         run: |
-          cd MCCS-Windows-V1-Build-Package/MCCS-Windows-V1
+          $app = "${{ steps.findapp.outputs.app_path }}"
+          $bundle = Join-Path $app "src-tauri\target\${{ matrix.target }}\release\bundle\nsis"
 
-          New-Item -ItemType Directory -Force -Path output
-
-          $installer = Get-ChildItem `
-            -Path "src-tauri\target\${{ matrix.target }}\release\bundle\nsis" `
-            -Filter "*-setup.exe" `
-            -Recurse |
-            Select-Object -First 1
-
-          if (-not $installer) {
-            throw "Installer EXE was not found."
+          if (-not (Test-Path $bundle)) {
+            throw "NSIS bundle folder was not created: $bundle"
           }
 
-          Copy-Item `
-            $installer.FullName `
-            "output\MCCS-Windows-V1-${{ matrix.name }}-Setup.exe"
+          $setup = Get-ChildItem -Path $bundle -Recurse -File -Filter "*-setup.exe" |
+            Select-Object -First 1
 
-      - name: Upload MCCS Installer
+          if (-not $setup) {
+            throw "Windows Setup EXE was not found in $bundle"
+          }
+
+          $output = Join-Path $env:RUNNER_TEMP "MCCS-Windows-V1-${{ matrix.name }}-Setup.exe"
+          Copy-Item $setup.FullName $output -Force
+
+          Write-Host "Installer ready: $output"
+          "installer_path=$output" >> $env:GITHUB_OUTPUT
+
+      - name: Upload MCCS installer
         uses: actions/upload-artifact@v4
         with:
           name: MCCS-Windows-V1-${{ matrix.name }}
-          path: MCCS-Windows-V1-Build-Package/MCCS-Windows-V1/output/MCCS-Windows-V1-${{ matrix.name }}-Setup.exe
+          path: ${{ steps.installer.outputs.installer_path }}
           if-no-files-found: error
+          retention-days: 30
