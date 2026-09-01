@@ -1,0 +1,16 @@
+MCCS WINDOWS V1 - BUILD INSTRUCTIONS
+
+1. Upload the folder MCCS-Windows-V1 to the ROOT of a GitHub repository.
+2. Open the repository's Actions tab.
+3. Select "Build MCCS Windows V1".
+4. Click "Run workflow".
+5. Wait for both jobs to complete.
+6. Download:
+   - MCCS-Windows-V1-x64
+   - MCCS-Windows-V1-x86
+7. Each artifact contains the ready-to-install Windows Setup EXE.
+
+The application points to:
+https://miran-commercial-control-system.vercel.app/
+
+No MCCS production database changes are made by this desktop package.
